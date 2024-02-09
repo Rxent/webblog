@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My blogs</title>
+</head>
+
+<!-- css -->
+<style>
+  /* default */
+  * {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #A60B38;
+  }
+  body {
+    background-color: #ECF0D7;
+  }
+  
+
+  /* main */
+
+  /* admin */
+  #admin-blogs-edit form {
+    display: flex;
+    flex-direction: column;
+    margin-left: auto;
+    margin-right: auto;
+
+  }
+  #admin-blogs-edit input {
+    margin: 10px;
+    padding: 8px;
+    border: 2px solid #A60B38;
+    border-radius: 7px;
+    box-shadow: 0 0 10px #9ecaed;
+  }
+  #admin-blogs-edit {
+    display: none;
+
+  }
+  #admin-password-input {
+    display: none;  
+    margin-left: auto;
+    margin-right: auto;
+    font-size: 15px;
+    margin-top: 15px; 
+    border: 2px solid #dadada;
+    border-radius: 7px;
+    border-color: #A60B38;
+    box-shadow: 0 0 10px #9ecaed;
+  }
+  #add-blog {
+    cursor: pointer;
+  }
+
+  /* views */
+  #views {
+    text-align: center;
+    margin-top: 15px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 30px;
+  }
+
+
+</style>
+
+<body>
+
+  <!-- html -->
+  <p id="views"></p>
+
+  <div id="admin-blogs-edit">
+    <form action="javascript:;" onsubmit="adminAddBlog(this, this.title.value, this.description.value)">
+      <input type="text" name="title" placeholder="Blog title">
+      <input type="text" name="description" placeholder="Blog description">
+      <input type="submit" value="Add blog" id="add-blog">
+    </form>
+  </div>
+
+  <p id ="total-blogs"></p>
+  <div id="blogs-container">
+    <p>Loading . . .</p>
+  </div>
+
+  <input type="password" name="admin-password" id="admin-password-input">
+
+
+</body>
+</html>
+
+<!-- js -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+  import { getDatabase, ref, set, get, update, DataSnapshot } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDgVy10tqfZS7MFmI5Cu4PiRr9LhIPUneA",
+    authDomain: "projectrx-49dcd.firebaseapp.com",
+    databaseURL: "https://projectrx-49dcd-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "projectrx-49dcd",
+    storageBucket: "projectrx-49dcd.appspot.com",
+    messagingSenderId: "1050912023123",
+    appId: "1:1050912023123:web:ba104da75cf89a68875ca6"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  export const db = getDatabase(app);
+
+  window.onload = async () => {
+    onLoadMain();
+    onLoadViews();
+  }
+
+  // main
+  async function onLoadMain() {
+    const blogsContainer = document.getElementById("blogs-container");
+    let snap = await get(ref(db, "blogs"));
+    if (!snap.exists()) {
+      blogsContainer.innerHTML = "<p>No blogs</p>"
+      return;
+    }
+
+    const blogs = [];
+    snap.forEach(blogSnap => {
+      const blog = blogSnap.val();
+      blog.key = blogSnap.key;
+      blogs.push(blog);
+    });
+    blogs.sort((a, b) => {
+      return b.date - a.date;
+    });
+
+    document.getElementById("total-blogs").innerHTML = `Total blogs: ${blogs.length}`
+
+    const blogsHTML = blogs.map(blog => {
+      let date = (new Date(blog.date)).toLocaleDateString();
+      if (blog.description != null) {
+        return `
+          <div class="blog" onclick="viewBlog('${blog.title.toLowerCase()}')">
+              <h2>${blog.title}</h2>
+              <p>${blog.description}</p>
+              <p>${date}</p>
+            </div>
+        `;
+      } else {
+        return `
+          <div class="blog" onclick="viewBlog('${blog.title.toLowerCase()}')">
+              <h2>${blog.title}</h2>
+              <p>${date}</p>
+            </div>
+        `;
+      }
+    }).join('');
+
+    blogsContainer.innerHTML = blogsHTML;
+    console.log("Main Loaded");
+
+  }
+
+  // admin
+  var ifAdmin = false;
+  const adminBlogsEdit = document.getElementById("admin-blogs-edit")
+  const adminPasswordInput = document.getElementById("admin-password-input")
+
+  adminPasswordInput.oninput = () => {
+    let password = adminPasswordInput.value;
+    if (password.length > 8) {
+      adminPasswordInput.value = password.slice(0, 8);
+    }
+    if (password == "admin") {
+      ifAdmin = true;
+      showAdminBlogsEdit();
+    }
+
+  }
+
+  function showAdminBlogsEdit() {
+    adminBlogsEdit.style.display = "flex";
+    adminPasswordInput.style.display = "none";
+  }
+
+  window.adminAddBlog = async(thisForm, title, description) => {
+    if (!ifAdmin) {
+      alert("You are not an admin!");
+      return;
+    }
+    if (/[.#$\[\]]/.test(title)) {
+      alert('Title can not contain any of the folowing characters:\n".","#","$","[","]"');
+      return;
+    }
+    if (title.length < 3) {
+      alert("title is too short,\nminimum lenght is 3 characters");
+      return;
+    }
+    if (title.length > 32) {
+      alert("title is too long,\nmaximun lenght is 32 characters");
+      return;
+    }
+    if (description.length > 64) {
+      alert("Description is too long,\nmaximun  lenght is 64 characters");
+      return;
+    }
+    let snap = await get(ref(db, "blogs/" + title.toLowerCase()));
+    if (snap.exists()) {
+      alert("Blog with this title already exists!");
+      return;
+    }
+    const blogData = {
+      title: title,
+      date: Date.now()
+    };
+    if (description.length > 0) {
+      if (description.length < 6) {
+        alert("title is too short,\nminimum lenght is 6 characters");
+        return;
+      }
+      blogData.description = description;
+    }
+    await set(ref(db, "blogs/" + title.toLowerCase()), blogData);
+    thisForm.querySelector("input[type='submit']").style.background = "#55bdaf";
+    thisForm.querySelectorAll("input[type= 'text']").forEach((thisInput) => {
+      thisInput.value = "";
+    });
+    setTimeout(() => {
+      thisForm.querySelector("input[type='submit']").style.background = "#49aebb";
+    },1000)
+  }
+
+  // views
+  const viewsEL = document.getElementById("views")
+  async function onLoadViews() {
+    let snap = await get(ref(db, "views"));
+    if (!snap.exists()) {
+      set(ref(db), {views: 1});
+      return;
+    }
+    update(ref(db), {views: snap.val() + 1});
+    document.getElementById("views").innerText = snap.val() + 1;
+    console.log("Views Loaded");
+  }
+  viewsEL.onclick = () => {
+    if (adminBlogsEdit.style.display == "none"){
+      if(adminPasswordInput.style.display == "none"){
+        adminPasswordInput.style.display = "block"
+      }else {
+        adminPasswordInput.style.display = "none"
+      }
+    }else {
+      adminBlogsEdit.style.display = "none"
+    }
+  }
+  // viewsEL.onclick = () => {
+  //   if(adminPasswordInput.style.display == "none"){
+  //     adminPasswordInput.style.display = "block";
+  //   }else {
+  //     adminPasswordInput.style.display = "none"
+  //   }
+  // }  
+
+</script>
+
+</body>
+</html>
+
+
+
+
+
+
+  
